@@ -121,7 +121,7 @@ p { font-size: 13px; color: var(--text-light); }
     isLoggedIn: localStorage.getItem("syedgo_admin_logged") === "true",
     orders: [], merchants: [], riders: [], customers: [], payouts: [], reviews: [],
     orderFilter: "all", searchQuery: "",
-    settings: { commissionRate: 10, deliveryFee: 150, platformFee: 30, riderCut: 120, featuredMerchants: [] },
+    settings: { commissionRate: 10, deliveryFee: 150, platformFee: 30, riderCut: 120, ratePerKm: 40, minDeliveryFee: 50, maxDeliveryFee: 500, featuredMerchants: [] },
     listeners: {},
     darkMode: localStorage.getItem("syedgo_admin_dark") === "true",
     reportRange: "7days"
@@ -129,9 +129,6 @@ p { font-size: 13px; color: var(--text-light); }
 
   let salesChartInstance = null, ordersChartInstance = null;
 
-  // ============================================
-  // HELPERS
-  // ============================================
   function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(window._t); window._t = setTimeout(() => t.classList.remove("show"), 2500); }
   function closeModal() { document.getElementById("modalRoot").innerHTML = ""; }
 
@@ -159,28 +156,19 @@ p { font-size: 13px; color: var(--text-light); }
 
   function getStatusClass(status) { if (status === "Placed") return "pending"; if (status === "Accepted by Store") return "accepted"; if (status === "Ready for Pickup") return "ready"; if (["Rider Assigned", "Picked Up", "On the Way"].includes(status)) return "assigned"; if (status === "Delivered") return "delivered"; if (["Cancelled", "Rejected"].includes(status)) return "cancelled"; return ""; }
 
-  // ============================================
-  // RATING HELPERS
-  // ============================================
   function calcMerchantRating(merchantDoc) {
     const mm = merchantDoc.merchant || merchantDoc;
     const storeName = mm.storeName || "";
     const myOrders = state.orders.filter(o => (o.items || []).some(i => i.shopName && i.shopName.toLowerCase() === storeName.toLowerCase()));
     const delivered = myOrders.filter(o => o.status === "Delivered");
-    // Also use customer reviews
     const storeReviews = state.reviews.filter(r => r.type === "store" && r.storeName === storeName);
     const avgReviewRating = storeReviews.length > 0 ? storeReviews.reduce((s, r) => s + (r.rating || 0), 0) / storeReviews.length : 0;
-    
     if (delivered.length === 0 && storeReviews.length === 0) return { rating: "New", count: 0, score: 0, deliveredCount: 0, totalOrders: myOrders.length, reviewAvg: 0, reviewCount: 0 };
-    
     const deliveryRate = myOrders.length > 0 ? delivered.length / myOrders.length : 0;
     const volumeScore = Math.min(delivered.length / 50, 1);
     const autoScore = (deliveryRate * 0.6 + volumeScore * 0.4) * 5;
-    
-    // Blend auto score + customer reviews
     let finalScore = autoScore;
     if (storeReviews.length > 0) finalScore = (autoScore * 0.4 + avgReviewRating * 0.6);
-    
     return { rating: finalScore.toFixed(1), count: delivered.length, score: finalScore, deliveredCount: delivered.length, totalOrders: myOrders.length, deliveryRate: (deliveryRate * 100).toFixed(0), reviewAvg: avgReviewRating.toFixed(1), reviewCount: storeReviews.length };
   }
 
@@ -189,45 +177,21 @@ p { font-size: 13px; color: var(--text-light); }
     const delivered = myOrders.filter(o => o.status === "Delivered");
     const riderReviews = state.reviews.filter(r => r.type === "rider" && r.riderPhone === rider.phone);
     const avgReviewRating = riderReviews.length > 0 ? riderReviews.reduce((s, r) => s + (r.rating || 0), 0) / riderReviews.length : 0;
-    
     if (myOrders.length === 0 && riderReviews.length === 0) return { rating: "New", count: 0, score: 0, deliveredCount: 0, totalOrders: 0, completionRate: 0, reviewAvg: 0, reviewCount: 0 };
-    
     const completionRate = myOrders.length > 0 ? delivered.length / myOrders.length : 0;
     const volumeScore = Math.min(delivered.length / 100, 1);
     const autoScore = (completionRate * 0.7 + volumeScore * 0.3) * 5;
-    
     let finalScore = autoScore;
     if (riderReviews.length > 0) finalScore = (autoScore * 0.4 + avgReviewRating * 0.6);
-    
     return { rating: finalScore.toFixed(1), count: delivered.length, score: finalScore, deliveredCount: delivered.length, totalOrders: myOrders.length, completionRate: (completionRate * 100).toFixed(0), reviewAvg: avgReviewRating.toFixed(1), reviewCount: riderReviews.length };
   }
 
-  function getRatingColor(score) {
-    if (score >= 4.5) return "#22c55e";
-    if (score >= 3.5) return "#84cc16";
-    if (score >= 2.5) return "#f59e0b";
-    if (score >= 1.5) return "#ef4444";
-    return "#64748b";
-  }
+  function getRatingColor(score) { if (score >= 4.5) return "#22c55e"; if (score >= 3.5) return "#84cc16"; if (score >= 2.5) return "#f59e0b"; if (score >= 1.5) return "#ef4444"; return "#64748b"; }
 
-  // ============================================
-  // DARK MODE
-  // ============================================
-  function toggleDarkMode() {
-    state.darkMode = !state.darkMode;
-    localStorage.setItem("syedgo_admin_dark", state.darkMode);
-    applyDarkMode();
-    render();
-  }
+  function toggleDarkMode() { state.darkMode = !state.darkMode; localStorage.setItem("syedgo_admin_dark", state.darkMode); applyDarkMode(); render(); }
 
-  function applyDarkMode() {
-    if (state.darkMode) { document.body.classList.add("dark"); document.getElementById("darkToggle").textContent = "☀️"; }
-    else { document.body.classList.remove("dark"); document.getElementById("darkToggle").textContent = "🌙"; }
-  }
+  function applyDarkMode() { if (state.darkMode) { document.body.classList.add("dark"); document.getElementById("darkToggle").textContent = "☀️"; } else { document.body.classList.remove("dark"); document.getElementById("darkToggle").textContent = "🌙"; } }
 
-  // ============================================
-  // DASHBOARD
-  // ============================================
   function renderDashboard() {
     const today = new Date().toDateString();
     const todayOrders = state.orders.filter(o => new Date(o.createdAt).toDateString() === today);
@@ -261,9 +225,6 @@ p { font-size: 13px; color: var(--text-light); }
       ${state.orders.slice(0, 3).map(o => `<div class="card" style="cursor:pointer;" onclick="openOrderDetail('${o.id}')"><div class="list-header"><b>#${o.id}</b><span class="status-chip ${getStatusClass(o.status)}">${o.status}</span></div><p style="font-size:12px;margin-top:4px;">${o.userName || 'Customer'} • Rs ${o.total}</p><p style="font-size:11px;color:var(--text-light);margin-top:2px;">${new Date(o.createdAt).toLocaleString()}</p></div>`).join("") || '<div class="empty"><span class="big">📭</span>No orders yet</div>'}`;
   }
 
-  // ============================================
-  // ORDERS
-  // ============================================
   function renderOrders() {
     let filtered = state.orders;
     if (state.orderFilter === "pending") filtered = filtered.filter(o => o.status === "Placed");
@@ -273,7 +234,7 @@ p { font-size: 13px; color: var(--text-light); }
     if (state.searchQuery) { const q = state.searchQuery.toLowerCase(); filtered = filtered.filter(o => o.id.toLowerCase().includes(q) || (o.userName || "").toLowerCase().includes(q) || (o.userPhone || "").includes(q)); }
     return `<h2>📦 Orders (${filtered.length})</h2><input class="search-input" placeholder="Search..." value="${state.searchQuery}" oninput="state.searchQuery=this.value; render();" />
       <div class="filter-chips"><div class="filter-chip ${state.orderFilter==='all'?'active':''}" onclick="state.orderFilter='all';render();">All</div><div class="filter-chip ${state.orderFilter==='pending'?'active':''}" onclick="state.orderFilter='pending';render();">Pending</div><div class="filter-chip ${state.orderFilter==='active'?'active':''}" onclick="state.orderFilter='active';render();">Active</div><div class="filter-chip ${state.orderFilter==='delivered'?'active':''}" onclick="state.orderFilter='delivered';render();">Delivered</div><div class="filter-chip ${state.orderFilter==='cancelled'?'active':''}" onclick="state.orderFilter='cancelled';render();">Cancelled</div></div>
-      ${filtered.length === 0 ? '<div class="empty"><span class="big">📭</span>No orders</div>' : filtered.map(o => `<div class="card" style="cursor:pointer;" onclick="openOrderDetail('${o.id}')"><div class="list-header"><b>#${o.id}</b><span class="status-chip ${getStatusClass(o.status)}">${o.status}</span></div><div class="order-row"><span>Customer</span><span>${o.userName || '-'}</span></div><div class="order-row"><span>Phone</span><span>${o.userPhone || '-'}</span></div><div class="order-row"><span>Total</span><span>Rs ${o.total}</span></div>${o.rider ? `<div class="order-row"><span>Rider</span><span>🛵 ${o.rider.name}</span></div>` : ''}<p style="font-size:11px;color:var(--text-light);margin-top:6px;">${new Date(o.createdAt).toLocaleString()}</p></div>`).join("")}`;
+      ${filtered.length === 0 ? '<div class="empty"><span class="big">📭</span>No orders</div>' : filtered.map(o => `<div class="card" style="cursor:pointer;" onclick="openOrderDetail('${o.id}')"><div class="list-header"><b>#${o.id}</b><span class="status-chip ${getStatusClass(o.status)}">${o.status}</span></div><div class="order-row"><span>Customer</span><span>${o.userName || '-'}</span></div><div class="order-row"><span>Phone</span><span>${o.userPhone || '-'}</span></div><div class="order-row"><span>Total</span><span>Rs ${o.total}</span></div><div class="order-row"><span>Delivery Fee</span><span>Rs ${o.delivery || 0}</span></div>${o.rider ? `<div class="order-row"><span>Rider</span><span>🛵 ${o.rider.name}</span></div>` : ''}<p style="font-size:11px;color:var(--text-light);margin-top:6px;">${new Date(o.createdAt).toLocaleString()}</p></div>`).join("")}`;
   }
 
   function openOrderDetail(orderId) {
@@ -284,18 +245,15 @@ p { font-size: 13px; color: var(--text-light); }
     const deliveryMargin = Math.max(0, (o.delivery || 0) - (o.riderEarning || state.settings.riderCut));
     const totalRevenue = commission + platformFee + deliveryMargin;
     document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h3 style="margin:0;">Order #${o.id}</h3><button class="btn btn-outline btn-sm" onclick="closeModal()">✕</button></div><span class="status-chip ${getStatusClass(o.status)}">${o.status}</span><p style="font-size:12px;color:var(--text-light);margin-top:8px;">${new Date(o.createdAt).toLocaleString()}</p>
-      <div class="card" style="margin-top:16px;"><h3 style="font-size:13px;margin-bottom:8px;">👤 Customer</h3><div class="order-row"><span>Name</span><span>${o.userName || '-'}</span></div><div class="order-row"><span>Phone</span><span>${o.userPhone || '-'}</span></div><div class="order-row"><span>Address</span><span style="font-size:11px;text-align:right;max-width:60%;">${o.address?.details || '-'}</span></div></div>
+      <div class="card" style="margin-top:16px;"><h3 style="font-size:13px;margin-bottom:8px;">👤 Customer</h3><div class="order-row"><span>Name</span><span>${o.userName || '-'}</span></div><div class="order-row"><span>Phone</span><span>${o.userPhone || '-'}</span></div><div class="order-row"><span>Address</span><span style="font-size:11px;text-align:right;max-width:60%;">${o.address?.details || '-'}</span></div>${o.address?.lat ? `<div class="order-row"><span>GPS</span><span style="font-size:11px;">${o.address.lat.toFixed(5)}, ${o.address.lng.toFixed(5)}</span></div>` : ''}</div>
       <div class="card"><h3 style="font-size:13px;margin-bottom:8px;">🛍️ Items</h3>${(o.items || []).map(i => `<div class="order-row"><span>${i.name} × ${i.qty}</span><span>Rs ${i.price * i.qty}</span></div>`).join("")}</div>
       ${o.pickup ? `<div class="card" style="background:var(--bg);"><h3 style="font-size:13px;margin-bottom:8px;">🏪 Pickup Location</h3><div class="order-row"><span>Store</span><span>${o.pickup.name || '-'}</span></div><div class="order-row"><span>Address</span><span style="font-size:11px;text-align:right;max-width:60%;">${o.pickup.address || '-'}</span></div>${o.pickup.location ? `<div class="order-row"><span>GPS</span><span style="font-size:11px;">${o.pickup.location.lat?.toFixed(5)}, ${o.pickup.location.lng?.toFixed(5)}</span></div>` : ''}</div>` : ''}
       ${o.rider ? `<div class="card" style="background:#f0fdf4;"><h3 style="font-size:13px;margin-bottom:8px;">🛵 Rider</h3><div class="order-row"><span>Name</span><span>${o.rider.name || '-'}</span></div><div class="order-row"><span>Phone</span><span>${o.rider.phone || '-'}</span></div><div class="order-row"><span>Bike</span><span>${o.rider.bike || '-'}</span></div><div class="order-row"><span>Earning</span><span>Rs ${o.riderEarning || 120}</span></div></div>` : ''}
-      <div class="card"><h3 style="font-size:13px;margin-bottom:8px;">💰 Financials</h3><div class="order-row"><span>Products</span><span>Rs ${o.subtotal || 0}</span></div><div class="order-row"><span>Delivery</span><span>Rs ${o.delivery || 0}</span></div><div class="order-row"><span>Platform Fee</span><span>Rs ${platformFee}</span></div>${o.discount > 0 ? `<div class="order-row" style="color:var(--success);"><span>Discount</span><span>-Rs ${o.discount}</span></div>` : ''}<div class="order-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px;"><span><b>Customer Paid</b></span><span><b>Rs ${o.total}</b></span></div></div>
+      <div class="card"><h3 style="font-size:13px;margin-bottom:8px;">💰 Financials</h3><div class="order-row"><span>Products</span><span>Rs ${o.subtotal || 0}</span></div><div class="order-row"><span>Delivery Fee</span><span>Rs ${o.delivery || 0}</span></div><div class="order-row"><span>Platform Fee</span><span>Rs ${platformFee}</span></div>${o.discount > 0 ? `<div class="order-row" style="color:var(--success);"><span>Discount</span><span>-Rs ${o.discount}</span></div>` : ''}<div class="order-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px;"><span><b>Customer Paid</b></span><span><b>Rs ${o.total}</b></span></div></div>
       <div class="card" style="background:#f5f3ff;"><h3 style="font-size:13px;margin-bottom:8px;color:var(--admin);">📊 SwatGo Revenue</h3><div class="order-row"><span>Store Commission (${state.settings.commissionRate}%)</span><span>Rs ${commission}</span></div><div class="order-row"><span>Platform Fee</span><span>Rs ${platformFee}</span></div><div class="order-row"><span>Delivery Margin</span><span>Rs ${deliveryMargin}</span></div><div class="order-row" style="border-top:1px solid var(--border);padding-top:6px;margin-top:6px;"><span><b>Total</b></span><span><b style="color:var(--admin);">Rs ${totalRevenue}</b></span></div></div>
       <button class="btn btn-outline btn-block" onclick="closeModal()" style="margin-top:12px;">Close</button></div></div>`;
   }
 
-  // ============================================
-  // MERCHANTS
-  // ============================================
   function renderMerchants() {
     let list = state.merchants;
     if (state.searchQuery) { const q = state.searchQuery.toLowerCase(); list = list.filter(m => { const mm = m.merchant || m; return (mm.storeName || "").toLowerCase().includes(q) || (mm.phone || "").includes(q); }); }
@@ -334,9 +292,6 @@ p { font-size: 13px; color: var(--text-light); }
 
   async function deleteMerchant(phone) { if (!confirm("Delete merchant?")) return; try { await deleteDoc(doc(db, "merchants", phone)); toast("Deleted"); } catch (e) { toast("Failed"); } }
 
-  // ============================================
-  // RIDERS
-  // ============================================
   function renderRiders() {
     let list = state.riders;
     if (state.searchQuery) { const q = state.searchQuery.toLowerCase(); list = list.filter(r => (r.name || "").toLowerCase().includes(q) || (r.phone || "").includes(q)); }
@@ -352,9 +307,6 @@ p { font-size: 13px; color: var(--text-light); }
 
   async function deleteRider(phone) { if (!confirm("Remove rider?")) return; try { await deleteDoc(doc(db, "riders", phone)); toast("Removed"); } catch (e) { toast("Failed"); } }
 
-  // ============================================
-  // CUSTOMERS
-  // ============================================
   function renderCustomers() {
     let list = state.customers;
     if (state.searchQuery) { const q = state.searchQuery.toLowerCase(); list = list.filter(u => { const user = u.user || u; return (user.name || "").toLowerCase().includes(q) || (user.phone || "").includes(q); }); }
@@ -367,9 +319,6 @@ p { font-size: 13px; color: var(--text-light); }
       }).join("")}`;
   }
 
-  // ============================================
-  // PAYOUTS
-  // ============================================
   function renderPayouts() {
     const payouts = state.payouts;
     const pending = payouts.filter(p => p.status === "pending");
@@ -386,9 +335,6 @@ p { font-size: 13px; color: var(--text-light); }
   async function approvePayout(payoutId) { if (!confirm("Mark as PAID?")) return; try { await updateDoc(doc(db, "payouts", payoutId), { status: "paid", paidAt: new Date().toISOString() }); toast("✅ Approved"); } catch (e) { toast("Failed"); } }
   async function rejectPayout(payoutId) { if (!confirm("Reject?")) return; try { await updateDoc(doc(db, "payouts", payoutId), { status: "rejected", rejectedAt: new Date().toISOString() }); toast("Rejected"); } catch (e) { toast("Failed"); } }
 
-  // ============================================
-  // REPORTS
-  // ============================================
   function getDateRange(range) {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -399,10 +345,7 @@ p { font-size: 13px; color: var(--text-light); }
     return { from: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), to: now };
   }
 
-  function filterOrdersByRange(orders, range) {
-    const { from, to } = getDateRange(range);
-    return orders.filter(o => { const d = new Date(o.createdAt); return d >= from && d <= to; });
-  }
+  function filterOrdersByRange(orders, range) { const { from, to } = getDateRange(range); return orders.filter(o => { const d = new Date(o.createdAt); return d >= from && d <= to; }); }
 
   function buildSalesTrendData(orders, range) {
     const { from } = getDateRange(range);
@@ -428,17 +371,13 @@ p { font-size: 13px; color: var(--text-light); }
     const totalOrders = filteredOrders.length;
     const avgOrderValue = delivered.length > 0 ? Math.round(totalSales / delivered.length) : 0;
     const cancelRate = totalOrders > 0 ? ((cancelled.length / totalOrders) * 100).toFixed(1) : 0;
-
     const merchantStats = {};
     delivered.forEach(o => { (o.items || []).forEach(i => { if (!i.shopName) return; if (!merchantStats[i.shopName]) merchantStats[i.shopName] = { name: i.shopName, orders: 0, revenue: 0 }; merchantStats[i.shopName].orders++; merchantStats[i.shopName].revenue += i.price * i.qty; }); });
     const topMerchants = Object.values(merchantStats).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-
     const riderStats = {};
     delivered.forEach(o => { if (!o.rider) return; const phone = o.rider.phone; if (!riderStats[phone]) riderStats[phone] = { name: o.rider.name, phone, deliveries: 0, earned: 0 }; riderStats[phone].deliveries++; riderStats[phone].earned += (o.riderEarning || 120); });
     const topRiders = Object.values(riderStats).sort((a, b) => b.deliveries - a.deliveries).slice(0, 5);
-
     const rangeLabel = { today: "Today", "7days": "Last 7 Days", "30days": "Last 30 Days", thisMonth: "This Month" }[state.reportRange] || "Last 7 Days";
-
     return `<h2>📈 Reports & Analytics</h2>
       <div class="filter-chips">
         <div class="filter-chip ${state.reportRange==='today'?'active':''}" onclick="state.reportRange='today';render();">Today</div>
@@ -494,9 +433,6 @@ p { font-size: 13px; color: var(--text-light); }
     }
   }
 
-  // ============================================
-  // EXPORT CSV
-  // ============================================
   function exportCSV(type) {
     let data = [];
     let filename = "";
@@ -525,13 +461,14 @@ p { font-size: 13px; color: var(--text-light); }
     toast("📥 Exported!");
   }
 
-  // ============================================
-  // SETTINGS
-  // ============================================
   function renderSettings() {
     return `<h2>⚙️ Settings</h2>
-      <div class="card"><h3 style="margin-bottom:12px;">💰 Commission & Fees</h3><label class="form-label">Store Commission Rate (%)</label><input class="form-input" type="number" value="${state.settings.commissionRate}" onchange="updateSetting('commissionRate', parseInt(this.value))" /><label class="form-label">Delivery Fee (Rs)</label><input class="form-input" type="number" value="${state.settings.deliveryFee}" onchange="updateSetting('deliveryFee', parseInt(this.value))" /><label class="form-label">Platform Fee (Rs)</label><input class="form-input" type="number" value="${state.settings.platformFee}" onchange="updateSetting('platformFee', parseInt(this.value))" /><label class="form-label">Rider Cut per Delivery (Rs)</label><input class="form-input" type="number" value="${state.settings.riderCut}" onchange="updateSetting('riderCut', parseInt(this.value))" /></div>
+      <div class="card"><h3 style="margin-bottom:12px;">💰 Commission & Fees</h3><label class="form-label">Store Commission Rate (%)</label><input class="form-input" type="number" value="${state.settings.commissionRate}" onchange="updateSetting('commissionRate', parseInt(this.value))" /><label class="form-label">Platform Fee (Rs)</label><input class="form-input" type="number" value="${state.settings.platformFee}" onchange="updateSetting('platformFee', parseInt(this.value))" /><label class="form-label">Rider Cut per Delivery (Rs)</label><input class="form-input" type="number" value="${state.settings.riderCut}" onchange="updateSetting('riderCut', parseInt(this.value))" /></div>
+
+      <div class="card"><h3 style="margin-bottom:12px;">📏 Distance-Based Delivery Fee</h3><p style="font-size:11px;color:var(--text-light);margin-bottom:12px;">Delivery fee auto-calculates based on distance between store and customer</p><label class="form-label">Rate per KM (Rs)</label><input class="form-input" type="number" value="${state.settings.ratePerKm || 40}" onchange="updateSetting('ratePerKm', parseInt(this.value))" /><label class="form-label">Minimum Delivery Fee (Rs)</label><input class="form-input" type="number" value="${state.settings.minDeliveryFee || 50}" onchange="updateSetting('minDeliveryFee', parseInt(this.value))" /><label class="form-label">Maximum Delivery Fee (Rs)</label><input class="form-input" type="number" value="${state.settings.maxDeliveryFee || 500}" onchange="updateSetting('maxDeliveryFee', parseInt(this.value))" /><label class="form-label">Fallback Fee (if GPS unavailable) (Rs)</label><input class="form-input" type="number" value="${state.settings.deliveryFee || 150}" onchange="updateSetting('deliveryFee', parseInt(this.value))" /></div>
+
       <div class="card"><h3 style="margin-bottom:12px;">⭐ Featured Merchants</h3><p style="font-size:12px;color:var(--text-light);margin-bottom:8px;">Total: ${(state.settings.featuredMerchants || []).length}</p>${(state.settings.featuredMerchants || []).length === 0 ? '<p style="font-size:12px;color:var(--text-light);">No featured merchants.</p>' : state.settings.featuredMerchants.map(phone => { const m = state.merchants.find(x => (x.merchant || x).phone === phone); const name = m ? (m.merchant || m).storeName : phone; return `<div class="order-row" style="padding:8px 0;"><span>${name}</span><button class="btn btn-outline btn-sm" onclick="toggleFeatured('${phone}')">Remove</button></div>`; }).join("")}</div>
+      
       <div class="card"><h3 style="margin-bottom:12px;">📊 Data Export</h3>
         <button class="btn btn-outline btn-block" onclick="exportData()" style="margin-bottom:8px;">📥 Export All Data (JSON)</button>
         <button class="btn btn-outline btn-block" onclick="exportCSV('orders')" style="margin-bottom:8px;">📄 Export Orders (CSV)</button>
@@ -543,11 +480,8 @@ p { font-size: 13px; color: var(--text-light); }
 
   async function updateSetting(key, value) { if (isNaN(value)) return toast("Invalid"); state.settings[key] = value; try { await setDoc(doc(db, "settings", "global"), state.settings, { merge: true }); toast("Saved ✅"); } catch (e) { toast("Failed"); } }
 
-  function exportData() { const data = JSON.stringify({ orders: state.orders, merchants: state.merchants, riders: state.riders, customers: state.customers, payouts: state.payouts, reviews: state.reviews, exportedAt: new Date().toISOString() }, null, 2); const blob = new Blob([data], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "swatgo-export-" + Date.now() + ".json"; a.click(); toast("Exported"); }
+  function exportData() { const data = JSON.stringify({ orders: state.orders, merchants: state.merchants, riders: state.riders, customers: state.customers, payouts: state.payouts, reviews: state.reviews, settings: state.settings, exportedAt: new Date().toISOString() }, null, 2); const blob = new Blob([data], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "swatgo-export-" + Date.now() + ".json"; a.click(); toast("Exported"); }
 
-  // ============================================
-  // MAIN RENDER
-  // ============================================
   function render() {
     const app = document.getElementById("app");
     if (!state.isLoggedIn) { app.innerHTML = `<div class="card" style="text-align:center;padding:40px 20px;"><div style="font-size:64px;margin-bottom:16px;">⚙️</div><h3 style="margin-bottom:8px;">SwatGo Admin Panel</h3><p style="color:var(--text-light);font-size:13px;margin-bottom:20px;">Secure access only</p><button class="btn btn-primary btn-block" onclick="adminLogin()">🔐 Login</button></div>`; document.getElementById("bottomNav").style.display = "none"; document.getElementById("darkToggle").style.display = "none"; return; }
