@@ -255,20 +255,51 @@ p { font-size: 13px; color: var(--text-light); }
   }
 
   function renderMerchants() {
-    let list = state.merchants;
-    if (state.searchQuery) { const q = state.searchQuery.toLowerCase(); list = list.filter(m => { const mm = m.merchant || m; return (mm.storeName || "").toLowerCase().includes(q) || (mm.phone || "").includes(q); }); }
-    return `<h2>🏪 Merchants (${list.length})</h2><input class="search-input" placeholder="Search store..." value="${state.searchQuery}" oninput="state.searchQuery=this.value; render();" />
-      ${list.length === 0 ? '<div class="empty"><span class="big">🏪</span>No merchants yet</div>' : list.map(m => {
-        const mm = m.merchant || m;
-        const products = m.products || [];
-        const rating = calcMerchantRating(m);
-        const isFeatured = (state.settings.featuredMerchants || []).includes(mm.phone);
-        const ratingBg = getRatingColor(rating.score);
-        const hasLocation = mm.location && mm.location.lat;
-        return `<div class="card"><div class="list-header"><b>${mm.storeName}</b>${isFeatured ? '<span class="status-chip" style="background:#fef3c7;color:#92400e;">⭐ Featured</span>' : ''}</div>
-        <div style="margin:8px 0;"><span class="rating-badge" style="background:${ratingBg};">⭐ ${rating.rating}${rating.count > 0 ? ' (' + rating.count + ')' : ''}</span>${rating.reviewCount > 0 ? `<span style="font-size:11px;color:var(--text-light);margin-left:8px;">Reviews: ${rating.reviewAvg} (${rating.reviewCount})</span>` : ''}<span class="location-badge ${hasLocation ? 'ok' : 'missing'}" style="margin-left:8px;">${hasLocation ? '📍 Located' : '⚠️ No location'}</span></div>
-        <div class="order-row"><span>Category</span><span>${mm.category}</span></div><div class="order-row"><span>Phone</span><span>${mm.phone}</span></div><div class="order-row"><span>Email</span><span style="font-size:11px;">${mm.email || '-'}</span></div><div class="order-row"><span>Address</span><span style="font-size:11px;text-align:right;max-width:60%;">${mm.address || '-'}</span></div><div class="order-row"><span>Products</span><span>${products.length}</span></div><div class="order-row"><span>Total Orders</span><span>${rating.totalOrders}</span></div><div class="order-row"><span>Delivered</span><span>${rating.deliveredCount}</span></div><div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;"><button class="btn ${isFeatured ? 'btn-warning' : 'btn-outline'} btn-sm" onclick="toggleFeatured('${mm.phone}')">${isFeatured ? '⭐ Remove' : '⭐ Feature'}</button><button class="btn btn-outline btn-sm" onclick="viewMerchantProducts('${mm.phone}')">📦 Products</button><button class="btn btn-outline btn-sm" onclick="viewMerchantReviews('${mm.storeName.replace(/'/g,"\\'")}')">⭐ Reviews</button><button class="btn btn-danger btn-sm" onclick="deleteMerchant('${mm.phone}')">🗑️ Delete</button></div></div>`;
-      }).join("")}`;
+    try {
+      let list = state.merchants || [];
+      if (state.searchQuery) {
+        const q = state.searchQuery.toLowerCase();
+        list = list.filter(m => {
+          const mm = m.merchant || m;
+          return (mm.storeName || "").toLowerCase().includes(q) || (mm.phone || "").includes(q);
+        });
+      }
+      return `<h2>🏪 Merchants (${list.length})</h2>
+      <input class="search-input" placeholder="Search store..." value="${state.searchQuery || ''}" oninput="state.searchQuery=this.value; render();" />
+      ${list.length === 0 ? '<div class="empty"><span class="big">🏪</span>No merchants yet</div>' : list.map((m, idx) => {
+          const mm = m.merchant || m;
+          const products = m.products || [];
+          const rating = calcMerchantRating(m);
+          const isFeatured = (state.settings.featuredMerchants || []).includes(mm.phone);
+          const ratingBg = getRatingColor(rating.score);
+          const hasLocation = mm.location && mm.location.lat;
+          const storeName = mm.storeName || 'Unknown';
+          return `<div class="card">
+              <div class="list-header"><b>${storeName}</b>${isFeatured ? '<span class="status-chip" style="background:#fef3c7;color:#92400e;">⭐ Featured</span>' : ''}</div>
+              <div style="margin:8px 0;">
+                  <span class="rating-badge" style="background:${ratingBg};">⭐ ${rating.rating}${rating.count > 0 ? ' (' + rating.count + ')' : ''}</span>
+                  ${rating.reviewCount > 0 ? '<span style="font-size:11px;color:var(--text-light);margin-left:8px;">Reviews: ' + rating.reviewAvg + ' (' + rating.reviewCount + ')</span>' : ''}
+                  <span class="location-badge ${hasLocation ? 'ok' : 'missing'}" style="margin-left:8px;">${hasLocation ? '📍 Located' : '⚠️ No location'}</span>
+              </div>
+              <div class="order-row"><span>Category</span><span>${mm.category || '-'}</span></div>
+              <div class="order-row"><span>Phone</span><span>${mm.phone || '-'}</span></div>
+              <div class="order-row"><span>Email</span><span style="font-size:11px;">${mm.email || '-'}</span></div>
+              <div class="order-row"><span>Address</span><span style="font-size:11px;text-align:right;max-width:60%;">${mm.address || '-'}</span></div>
+              <div class="order-row"><span>Products</span><span>${products.length}</span></div>
+              <div class="order-row"><span>Total Orders</span><span>${rating.totalOrders}</span></div>
+              <div class="order-row"><span>Delivered</span><span>${rating.deliveredCount}</span></div>
+              <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">
+                  <button type="button" class="btn ${isFeatured ? 'btn-warning' : 'btn-outline'} btn-sm" data-action="feature" data-idx="${idx}">${isFeatured ? '⭐ Remove' : '⭐ Feature'}</button>
+                  <button type="button" class="btn btn-outline btn-sm" data-action="products" data-idx="${idx}">📦 Products</button>
+                  <button type="button" class="btn btn-outline btn-sm" data-action="reviews" data-idx="${idx}">⭐ Reviews</button>
+                  <button type="button" class="btn btn-danger btn-sm" data-action="delete" data-idx="${idx}">🗑️ Delete</button>
+              </div>
+          </div>`;
+        }).join("")}`;
+    } catch (e) {
+      console.error('renderMerchants error:', e);
+      return `<div class="card" style="text-align:center;padding:30px;"><p style="color:var(--danger);">Error loading merchants: ${e.message}</p></div>`;
+    }
   }
 
   async function toggleFeatured(phone) {
@@ -282,7 +313,7 @@ p { font-size: 13px; color: var(--text-light); }
   function viewMerchantProducts(phone) {
     const m = state.merchants.find(x => (x.merchant || x).phone === phone); if (!m) return;
     const products = m.products || []; const mm = m.merchant || m;
-    document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h3 style="margin:0;">📦 ${mm.storeName}</h3><button class="btn btn-outline btn-sm" onclick="closeModal()">✕</button></div>${products.length === 0 ? '<div class="empty"><span class="big">📭</span>No products</div>' : products.map(p => `<div class="card"><div style="display:flex;justify-content:space-between;"><div><b>${p.name}</b><p style="font-size:11px;color:var(--text-light);">${p.desc || '-'}</p><p style="font-size:13px;font-weight:600;color:var(--text);margin-top:4px;">Rs ${p.price}</p></div><span class="status-chip ${p.stock === false ? 'cancelled' : 'delivered'}">${p.stock === false ? 'Out' : 'In Stock'}</span></div></div>`).join("")}</div></div>`;
+    document.getElementById("modalRoot").innerHTML = `<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;"><h3 style="margin:0;">📦 ${mm.storeName || 'Store'}</h3><button class="btn btn-outline btn-sm" onclick="closeModal()">✕</button></div>${products.length === 0 ? '<div class="empty"><span class="big">📭</span>No products</div>' : products.map(p => `<div class="card"><div style="display:flex;justify-content:space-between;"><div><b>${p.name}</b><p style="font-size:11px;color:var(--text-light);">${p.desc || '-'}</p><p style="font-size:13px;font-weight:600;color:var(--text);margin-top:4px;">Rs ${p.price}</p></div><span class="status-chip ${p.stock === false ? 'cancelled' : 'delivered'}">${p.stock === false ? 'Out' : 'In Stock'}</span></div></div>`).join("")}</div></div>`;
   }
 
   function viewMerchantReviews(storeName) {
@@ -503,6 +534,24 @@ p { font-size: 13px; color: var(--text-light); }
   }
 
   document.querySelectorAll(".bottom-nav button").forEach(btn => { btn.addEventListener("click", () => { state.tab = btn.dataset.tab; state.searchQuery = ""; render(); window.scrollTo(0, 0); }); });
+
+  // ============================================
+  // GLOBAL EVENT DELEGATION (fixes merchant buttons)
+  // ============================================
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const idx = parseInt(btn.dataset.idx);
+    if (isNaN(idx)) return;
+    const m = state.merchants[idx];
+    if (!m) return;
+    const mm = m.merchant || m;
+    if (action === 'feature') toggleFeatured(mm.phone);
+    else if (action === 'products') viewMerchantProducts(mm.phone);
+    else if (action === 'reviews') viewMerchantReviews(mm.storeName);
+    else if (action === 'delete') deleteMerchant(mm.phone);
+  });
 
   setTimeout(() => { document.getElementById('splash').style.opacity = '0'; setTimeout(() => document.getElementById('splash')?.remove(), 500); }, 1500);
   applyDarkMode();
